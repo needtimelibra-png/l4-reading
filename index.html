@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>麥克風與評分測試</title>
+<style>
+:root {
+  --bg: #eef3f1; --surface: #ffffff; --ink: #17322b; --muted: #5b716a; --line: #d3dfda;
+  --accent: #1f6f5c; --accent-ink: #ffffff; --ball: #e0a21b;
+  --ok: #1d7a46; --ok-bg: #e2f3e8; --bad: #b3361f; --bad-bg: #fbe7e2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101a17; --surface: #18251f; --ink: #e3eee9; --muted: #9db3aa; --line: #2c3d36;
+    --accent: #4fb596; --accent-ink: #0d1814; --ball: #f0b93e;
+    --ok: #6fd39a; --ok-bg: #173226; --bad: #ff8f7a; --bad-bg: #3a1f19; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: "PingFang TC", "Noto Sans TC", system-ui, sans-serif; font-size: 17px; line-height: 1.55; }
+.wrap { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 64px; display: grid; gap: 16px; }
+h1 { font-size: 24px; margin: 0; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { min-height: 50px; padding: 0 20px; border-radius: 12px; border: 0; background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 700; cursor: pointer; }
+.btn.rec { background: var(--bad); color: #fff; }
+.btn:disabled { opacity: .5; }
+.note { color: var(--muted); font-size: 15px; }
+.sent { font-size: 22px; font-weight: 600; }
+.meter { height: 14px; border-radius: 7px; background: var(--bg); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: var(--ball); transition: width .08s linear; }
+ul.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+ul.checks li { display: flex; gap: 10px; align-items: baseline; }
+.st { font-weight: 700; min-width: 3.2em; text-align: center; border-radius: 999px; font-size: 14px; padding: 1px 8px; }
+.st.ok { background: var(--ok-bg); color: var(--ok); }
+.st.no { background: var(--bad-bg); color: var(--bad); }
+.st.wait { background: var(--bg); color: var(--muted); }
+.scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.scores div { background: var(--bg); border-radius: 10px; padding: 10px; }
+.scores b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+.w { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 8px; border-radius: 8px; background: var(--bg); }
+.w.bad { background: var(--bad-bg); color: var(--bad); }
+textarea { width: 100%; min-height: 160px; font: 13px/1.5 ui-monospace, Menlo, monospace; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 10px; }
+audio { width: 100%; }
+.stack { display: grid; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>麥克風與評分測試</h1>
+    <p class="note">請用學校 iPad 的 Safari 開啟，依序按下面的按鈕。</p>
+  </header>
+
+  <section class="panel">
+    <h2>0. Apps Script 網址</h2>
+    <div class="note">貼上測試專案的部署網址（結尾是 /exec）。只需要貼一次。</div>
+    <input id="api" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://script.google.com/macros/s/……/exec" style="width:100%;min-height:48px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:15px">
+  </section>
+
+  <section class="panel">
+    <h2>測試結果</h2>
+    <ul class="checks" id="checks"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>1. 錄音</h2>
+    <div class="note">按「開始錄音」後，對著 iPad 唸出下面這句，唸完按「停止」（最多 10 秒）。第一次會跳出「允許使用麥克風」，請按允許。</div>
+    <div class="sent" id="ref">Dogs have a keen sense of smell.</div>
+    <div class="meter"><i id="lv"></i></div>
+    <div class="row">
+      <button class="btn" id="bRec" type="button">開始錄音</button>
+      <span class="note" id="recInfo"></span>
+    </div>
+    <audio id="player" controls hidden></audio>
+  </section>
+
+  <section class="panel">
+    <h2>2. 上傳與評分</h2>
+    <div class="row">
+      <button class="btn" id="bUp" type="button" disabled>上傳並評分</button>
+      <span class="note" id="upInfo"></span>
+    </div>
+    <div id="azOut" hidden class="stack">
+      <div class="scores" id="scores"></div>
+      <div id="words"></div>
+      <div class="note" id="heard"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>3. 回傳給 Claude</h2>
+    <div class="note">測完後按「複製」，把內容貼回對話就可以了。</div>
+    <div class="row"><button class="btn" id="bCopy" type="button">複製測試結果</button><span class="note" id="cpInfo"></span></div>
+    <textarea id="log" readonly></textarea>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const checks = [
+    ['env', '頁面環境'],
+    ['mic', '取得麥克風'],
+    ['rec', '錄到聲音'],
+    ['play', '可以播放錄音'],
+    ['up', '上傳到伺服器'],
+    ['az', 'Azure 發音評分']
+  ];
+  const state = {};
+  const log = [];
+  function addLog(s) { log.push(s); $('log').value = log.join('\n'); }
+  function setCheck(k, ok, msg) {
+    state[k] = { ok, msg };
+    render();
+    addLog(`[${ok === true ? 'OK' : ok === false ? 'FAIL' : '--'}] ${checks.find((c) => c[0] === k)[1]}：${msg || ''}`);
+  }
+  function render() {
+    $('checks').innerHTML = checks.map(([k, label]) => {
+      const s = state[k];
+      const cls = !s ? 'wait' : s.ok === true ? 'ok' : s.ok === false ? 'no' : 'wait';
+      const t = !s ? '待測' : s.ok === true ? '成功' : s.ok === false ? '失敗' : '略過';
+      return `<li><span class="st ${cls}">${t}</span><span>${label}${s && s.msg ? '：' + esc(s.msg) : ''}</span></li>`;
+    }).join('');
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const errText = (e) => String((e && (e.name ? e.name + ' ' : '') + (e.message || '')) || e);
+
+  addLog('UA: ' + navigator.userAgent);
+  addLog('standalone page / inIframe: ' + (window.self !== window.top) + ' / secure: ' + window.isSecureContext);
+  const hasMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const AC = window.AudioContext || window.webkitAudioContext;
+  setCheck('env', hasMedia && !!AC, `mediaDevices=${hasMedia}, AudioContext=${!!AC}`);
+
+  /* ---------- recording (raw PCM → 16 kHz WAV) ---------- */
+  let ctx = null, stream = null, proc = null, src = null, chunks = [], inRate = 48000, timer = null, wavB64 = null, t0 = 0;
+  const MAX_SEC = 10;
+
+  $('bRec').addEventListener('click', () => { if (proc) stopRec(); else startRec(); });
+
+  function startRec() {
+    chunks = []; wavB64 = null; $('bUp').disabled = true; $('player').hidden = true;
+    try { ctx = new AC(); } catch (e) { setCheck('mic', false, 'AudioContext ' + errText(e)); return; }
+    if (!hasMedia) { setCheck('mic', false, '此環境沒有 getUserMedia'); return; }
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } })
+      .then(async (s) => {
+        stream = s;
+        await ctx.resume();
+        inRate = ctx.sampleRate;
+        src = ctx.createMediaStreamSource(stream);
+        proc = ctx.createScriptProcessor(4096, 1, 1);
+        proc.onaudioprocess = (e) => {
+          const d = e.inputBuffer.getChannelData(0);
+          chunks.push(new Float32Array(d));
+          let peak = 0; for (let i = 0; i < d.length; i += 16) peak = Math.max(peak, Math.abs(d[i]));
+          $('lv').style.width = Math.min(100, peak * 140) + '%';
+        };
+        src.connect(proc); proc.connect(ctx.destination);
+        setCheck('mic', true, `sampleRate ${inRate}`);
+        t0 = Date.now();
+        $('bRec').textContent = '停止'; $('bRec').classList.add('rec');
+        timer = setInterval(() => {
+          const sec = (Date.now() - t0) / 1000;
+          $('recInfo').textContent = `錄音中 ${sec.toFixed(1)} 秒`;
+          if (sec >= MAX_SEC) stopRec();
+        }, 200);
+      })
+      .catch((e) => setCheck('mic', false, errText(e)));
+  }
+
+  function stopRec() {
+    clearInterval(timer);
+    try { src && src.disconnect(); proc && proc.disconnect(); } catch (e) {}
+    proc = null;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    if (ctx) ctx.close();
+    $('bRec').textContent = '重新錄音'; $('bRec').classList.remove('rec'); $('lv').style.width = '0';
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const pcm = new Float32Array(total); let o = 0; chunks.forEach((c) => { pcm.set(c, o); o += c.length; });
+    let peak = 0; for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
+    const secs = total / inRate;
+    $('recInfo').textContent = `錄了 ${secs.toFixed(1)} 秒`;
+    setCheck('rec', secs > 0.5 && peak > 0.01, `${secs.toFixed(1)} 秒，最大音量 ${peak.toFixed(3)}`);
+    const wav = toWav16k(pcm, inRate);
+    const blob = new Blob([wav], { type: 'audio/wav' });
+    const pl = $('player');
+    pl.src = URL.createObjectURL(blob); pl.hidden = false;
+    pl.onplaying = () => setCheck('play', true, '已播放');
+    pl.onerror = () => setCheck('play', false, '無法播放 WAV');
+    state.play || setCheck('play', null, '請按播放鍵聽聽看');
+    wavB64 = b64(new Uint8Array(wav));
+    $('bUp').disabled = false;
+    addLog(`WAV 16k: ${wav.byteLength} bytes`);
+  }
+
+  function toWav16k(f32, rate) {
+    const outRate = 16000, ratio = rate / outRate, n = Math.floor(f32.length / ratio);
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, outRate, true); v.setUint32(28, outRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      const a = Math.floor(i * ratio), b = Math.min(f32.length, Math.floor((i + 1) * ratio));
+      let s = 0; for (let j = a; j < b; j++) s += f32[j];
+      const x = Math.max(-1, Math.min(1, s / Math.max(1, b - a)));
+      v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+    }
+    return buf;
+  }
+  function b64(u8) {
+    let s = ''; const step = 0x8000;
+    for (let i = 0; i < u8.length; i += step) s += String.fromCharCode.apply(null, u8.subarray(i, i + step));
+    return btoa(s);
+  }
+
+  /* ---------- upload + Azure ---------- */
+  const ACTIONS = { uploadTest: (w) => ({ action: 'upload', wav: w }), azureTest: (w, ref) => ({ action: 'azure', wav: w, ref }) };
+  function apiUrl() { return ($('api').value || '').trim(); }
+  async function call(fn, ...args) {
+    const url = apiUrl();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(url)) throw new Error('請先在最上方貼上 Apps Script 網址（結尾是 /exec）');
+    const r = await fetch(url, { method: 'POST', body: JSON.stringify(ACTIONS[fn](...args)) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    return j.data;
+  }
+  try { const u = localStorage.getItem('mictest_api'); if (u) $('api').value = u; } catch (e) {}
+  $('api').addEventListener('change', () => { try { localStorage.setItem('mictest_api', apiUrl()); } catch (e) {} });
+  $('bUp').addEventListener('click', async () => {
+    if (!wavB64) return;
+    $('bUp').disabled = true; $('upInfo').textContent = '上傳中…';
+    const t = Date.now();
+    try {
+      const r = await call('uploadTest', wavB64);
+      setCheck('up', true, `伺服器收到 ${r.bytes} bytes，耗時 ${Date.now() - t} ms`);
+      if (!r.azureReady) {
+        setCheck('az', null, '尚未設定 Azure 金鑰，先略過');
+        $('upInfo').textContent = '';
+        return;
+      }
+      $('upInfo').textContent = '評分中…';
+      const a = await call('azureTest', wavB64, $('ref').textContent);
+      $('upInfo').textContent = '';
+      const sc = [['總分', a.pron], ['準確度', a.accuracy], ['流暢度', a.fluency], ['完整度', a.completeness], ['語調', a.prosody]];
+      $('scores').innerHTML = sc.map(([k, v]) => `<div>${k}<b>${v == null ? '—' : Math.round(v)}</b></div>`).join('');
+      $('words').innerHTML = a.words.map((w) => `<span class="w ${w.error && w.error !== 'None' || w.score < 60 ? 'bad' : ''}">${esc(w.word)} ${w.score == null ? '' : Math.round(w.score)}${w.error && w.error !== 'None' ? ' ' + esc(w.error) : ''}</span>`).join('');
+      $('heard').textContent = '系統聽到：' + a.heard;
+      $('azOut').hidden = false;
+      setCheck('az', a.status === 'Success', `${a.status}，總分 ${a.pron == null ? '—' : Math.round(a.pron)}，耗時 ${a.ms} ms`);
+    } catch (e) {
+      $('upInfo').textContent = '';
+      if (!state.up || state.up.ok !== true) setCheck('up', false, errText(e));
+      else setCheck('az', false, errText(e));
+    } finally { $('bUp').disabled = false; }
+  });
+
+  $('bCopy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('log').value); $('cpInfo').textContent = '已複製'; }
+    catch (e) { $('log').focus(); $('log').select(); $('cpInfo').textContent = '已選取，請按「拷貝」'; }
+  });
+  render();
+})();
+</script>
+</body>
+</html>
